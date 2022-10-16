@@ -7,6 +7,7 @@ import pdb
 
 from utils.gradcheck import gradcheck_naive, grad_tests_softmax, grad_tests_negsamp
 from utils.utils import normalizeRows, softmax
+from utils import utils
 
 
 def sigmoid(x):
@@ -19,7 +20,7 @@ def sigmoid(x):
 	"""
 
 	### YOUR CODE HERE (~1 Line)
-	s = np.exp(x)/(np.exp(x) + 1)
+	s = 1/(1+np.exp(-x))
 	### END YOUR CODE
 
 	return s
@@ -62,32 +63,24 @@ def naiveSoftmaxLossAndGradient(
 
 	### YOUR CODE HERE (~6-8 Lines)
 
-	def softmax(w, v):
-		return np.exp(w@v)/np.sum(np.exp(w@v))
-
 	### Please use the provided softmax function (imported earlier in this file)
 	### This numerically stable implementation helps you avoid issues pertaining
 	### to integer overflow. 
 
-	uo=outsideVectors[outsideWordIdx]
-	vc=centerWordVec
-	uw=outsideVectors
-
+	#compute softmax only once
+	softmax_res=softmax(outsideVectors@centerWordVec)
 
 	#loss
-	loss=-np.log(softmax(outsideVectors, centerWordVec))[outsideWordIdx]
+	loss=-np.log(softmax_res)[outsideWordIdx]
 
 	#grad center vec
-	gradCenterVec=softmax(outsideVectors, centerWordVec)@uw-outsideVectors[outsideWordIdx]
+	gradCenterVec=softmax_res@outsideVectors-outsideVectors[outsideWordIdx]
 
 	#grad outside vecs
-	gradOutsideVecs=np.zeros(uw.shape)
-	gradOutsideVecs[:]=vc
-	gradOutsideVecs*=np.exp(uw@vc)[:, None]
-	gradOutsideVecs[outsideWordIdx]-=vc*np.sum(np.exp(uw@vc))
+	gradOutsideVecs=np.zeros(outsideVectors.shape)[:] #initialize gradients to 0
+	gradOutsideVecs[:]=centerWordVec*softmax_res[:, None] #set initial jacobian
+	gradOutsideVecs[outsideWordIdx]-=centerWordVec #subtract from outside vector corresponding to u_o
 
-	gradOutsideVecs/=denominator
-	
 	### END YOUR CODE
 
 	return loss, gradCenterVec, gradOutsideVecs
@@ -132,16 +125,32 @@ def negSamplingLossAndGradient(
 	indices = [outsideWordIdx] + negSampleWordIndices
 
 	### YOUR CODE HERE (~10 Lines)
+	neg_samples=outsideVectors[negSampleWordIndices]
 
 	### Please use your implementation of sigmoid in here.
+
 	uo=outsideVectors[outsideWordIdx]
 	vc=centerWordVec
 	uw=outsideVectors
 
-	loss=-np.log(sigmoid(uo@vc))-np.sum(np.log(sigmoid(-uw@vc)))
+	sigmoid_uovc=sigmoid(outsideVectors[outsideWordIdx]@centerWordVec)
+	neg_sigmoids=sigmoid(-neg_samples@centerWordVec)
 
-	gradCenterVec=np.zeros(vc.shape)
-	gradOutsideVecs=np.zeros(uw.shape)
+	#calculate loss
+	loss= (
+		-np.log(sigmoid_uovc) -
+		np.sum(np.log(neg_sigmoids))
+	)
+
+	gradCenterVec=(
+		(sigmoid_uovc-1)*outsideVectors[outsideWordIdx] -
+		np.sum(-neg_samples*(1-neg_sigmoids)[:, None], axis=0)
+	)
+
+	gradOutsideVecs=outsideVectors.copy()
+
+
+
 
 	### END YOUR CODE
 
