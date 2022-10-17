@@ -125,16 +125,16 @@ def negSamplingLossAndGradient(
 	indices = [outsideWordIdx] + negSampleWordIndices
 
 	### YOUR CODE HERE (~10 Lines)
+
+	#re-usable computations
 	neg_samples=outsideVectors[negSampleWordIndices]
+	unique_indices, counts=np.unique(negSampleWordIndices, return_counts=True)
+	unique_samples=outsideVectors[unique_indices]
 
-	### Please use your implementation of sigmoid in here.
-
-	uo=outsideVectors[outsideWordIdx]
-	vc=centerWordVec
-	uw=outsideVectors
-
+	#re-usable sigmoid-related computations
 	sigmoid_uovc=sigmoid(outsideVectors[outsideWordIdx]@centerWordVec)
 	neg_sigmoids=sigmoid(-neg_samples@centerWordVec)
+	unique_neg_sigmoids=sigmoid(-unique_samples@centerWordVec)
 
 	#calculate loss
 	loss= (
@@ -142,15 +142,22 @@ def negSamplingLossAndGradient(
 		np.sum(np.log(neg_sigmoids))
 	)
 
+
+	#center vec gradient calculation
 	gradCenterVec=(
 		(sigmoid_uovc-1)*outsideVectors[outsideWordIdx] -
-		np.sum(-neg_samples*(1-neg_sigmoids)[:, None], axis=0)
+		np.sum(-unique_samples*((1-unique_neg_sigmoids)*counts)[:, None], axis=0)
 	)
 
-	gradOutsideVecs=outsideVectors.copy()
-
-
-
+	#simplify processing of repeated outside vector samples
+	unique_grads=np.zeros(unique_samples.shape)
+	unique_grads[:]=centerWordVec
+	unique_grads*=((1-sigmoid(-unique_samples@centerWordVec))*counts)[:, None]
+	
+	#update outside vector gradients
+	gradOutsideVecs=np.zeros(outsideVectors.shape)
+	gradOutsideVecs[unique_indices]=unique_grads
+	gradOutsideVecs[outsideWordIdx]+=(sigmoid_uovc-1)*centerWordVec
 
 	### END YOUR CODE
 
@@ -196,7 +203,26 @@ def skipgram(currentCenterWord, windowSize, outsideWords, word2Ind,
 	gradCenterVecs = np.zeros(centerWordVectors.shape)
 	gradOutsideVectors = np.zeros(outsideVectors.shape)
 
+
 	### YOUR CODE HERE (~8 Lines)
+	#window_indices=list({word2Ind[w] for w in outsideWords})
+
+	center_idx=word2Ind[currentCenterWord]
+	window_indices=[word2Ind[w] for w in outsideWords]
+
+	#loop for each outside word
+	for o in window_indices:
+		naive_loss, gradCenterVec, gradOutsideVecs=word2vecLossAndGradient(
+			centerWordVectors[center_idx],
+			o,
+			outsideVectors,
+			dataset,
+		)
+
+		#update loss and gradients
+		loss+=naive_loss
+		gradCenterVecs[center_idx]+=gradCenterVec
+		gradOutsideVectors+=gradOutsideVecs
 
 	### END YOUR CODE
 	
